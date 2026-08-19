@@ -1,0 +1,33 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Python/runtime files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.venv/
+venv/
+
+# Local dependencies and OS/editor files
+node_modules
+.DS_Store
+*.swp
+*~
+
+# Source spreadsheets and generated artifacts
+*.xlsx
+*.xls
+.~*
+outputs/
+
+# Runtime data. Keep data/master_data_source.json under version control.
+data/*.db
+data/*.db-*
+data/backups/
+data/import_staging/
+
+# Local logs
+*.log

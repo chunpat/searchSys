@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>定制报价查询</title>
+    <link rel="stylesheet" href="/style.css?v=20260819-tabs" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <div class="product-name">定制报价查询</div>
+        <div class="product-meta">内部报价数据</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="session-user"><span id="sessionName">-</span><small id="sessionRole"></small></div>
+        <button id="rebuildButton" class="secondary-button" type="button" hidden>重建索引</button>
+        <button id="logoutButton" class="secondary-button" type="button">退出</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="summary-grid" aria-label="数据概览">
+        <div class="metric"><span>报价项</span><strong id="quoteCount">-</strong></div>
+        <div class="metric"><span>可直接报价</span><strong id="readyPriceCount">-</strong></div>
+        <div class="metric estimate"><span>可预估工艺</span><strong id="estimateProcessCount">-</strong></div>
+        <div class="metric"><span>供应商能力</span><strong id="capabilityCount">-</strong></div>
+        <div class="metric alert"><span>待处理数据</span><strong id="issueCount">-</strong></div>
+      </section>
+
+      <nav class="workspace-tabs" role="tablist" aria-label="功能模块">
+        <button id="queryTabButton" class="workspace-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="queryTab" data-tab-target="query">报价查询</button>
+        <button id="rulesTabButton" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="rulesTab" data-tab-target="rules">规则推进</button>
+        <button id="dimensionsTabButton" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="dimensionsTab" data-tab-target="dimensions" data-admin-tab hidden>尺寸规则</button>
+        <button id="adminTabButton" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="adminSection" data-tab-target="admin" data-admin-tab hidden>系统管理</button>
+      </nav>
+
+      <div id="queryTab" class="tab-panel" role="tabpanel" aria-labelledby="queryTabButton" data-tab-panel="query">
+      <section class="query-panel" aria-label="查询条件">
+        <form id="searchForm" class="filters">
+          <label>
+            <span>SKU</span>
+            <input name="sku" list="skuOptions" autocomplete="off" placeholder="例如 PG3765" />
+            <datalist id="skuOptions"></datalist>
+          </label>
+          <label>
+            <span>工艺</span>
+            <input name="process" list="processOptions" autocomplete="off" placeholder="例如 热转印" />
+            <datalist id="processOptions"></datalist>
+          </label>
+          <label>
+            <span>材质</span>
+            <input name="material" list="materialOptions" autocomplete="off" placeholder="例如 亚克力" />
+            <datalist id="materialOptions"></datalist>
+          </label>
+          <label>
+            <span>供应商</span>
+            <input name="supplier" list="supplierOptions" autocomplete="off" placeholder="供应商名称" />
+            <datalist id="supplierOptions"></datalist>
+          </label>
+          <label>
+            <span>最晚完成（天）</span>
+            <input name="maxDays" inputmode="numeric" autocomplete="off" placeholder="例如 3" />
+          </label>
+          <label>
+            <span>目标宽（mm）</span>
+            <input name="targetWidth" type="number" min="0" step="0.1" placeholder="例如 95" />
+          </label>
+          <label>
+            <span>目标高（mm）</span>
+            <input name="targetHeight" type="number" min="0" step="0.1" placeholder="例如 70" />
+          </label>
+          <label>
+            <span>目标厚 / 深（mm）</span>
+            <input name="targetDepth" type="number" min="0" step="0.1" placeholder="3D 时填写" />
+          </label>
+          <label class="checkbox-label">
+            <input name="priceOnly" type="checkbox" />
+            <span>仅直接报价</span>
+          </label>
+          <div class="filter-actions">
+            <button class="primary-button" type="submit">查询</button>
+            <button id="estimateButton" class="estimate-button" type="button">生成预估</button>
+            <button id="resetButton" class="text-button" type="button">重置</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="estimateSection" class="estimate-section" aria-live="polite" hidden>
+        <div class="section-head">
+          <div>
+            <h2>预估报价</h2>
+            <p>根据当前查询条件和历史固定价计算，不代替供应商最终确认。</p>
+          </div>
+          <span id="estimateStatus" class="status review">计算中</span>
+        </div>
+        <div id="estimateContent" class="estimate-content"></div>
+      </section>
+
+      <section class="result-section" aria-live="polite">
+        <div class="section-head">
+          <div>
+            <h1>报价结果</h1>
+            <p id="resultMeta">加载中</p>
+          </div>
+          <div class="legend">
+            <span class="status direct">可直接报价</span>
+            <span class="status review">价格待核实</span>
+            <span class="status reference">仅供参考</span>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>报价状态</th>
+                <th>报价</th>
+                <th>供应商</th>
+                <th>SKU</th>
+                <th>工艺</th>
+                <th>材质</th>
+                <th>定制尺寸</th>
+                <th>生产 / 物流</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="capabilitySection" class="capability-section" hidden>
+        <div class="section-head compact">
+          <div>
+            <h2>可做能力</h2>
+            <p>以下供应商能力来自时效表，尚无对应的直接报价项。</p>
+          </div>
+        </div>
+        <div id="capabilityList" class="capability-list"></div>
+      </section>
+      </div>
+
+      <section id="rulesTab" class="rule-section tab-panel" role="tabpanel" data-tab-panel="rules" aria-labelledby="rulesTabButton" hidden>
+        <div class="section-head">
+          <div>
+            <h2>规则推进</h2>
+            <p>仅用于确定人工录入优先级。尺寸插值、A3 排版、附加费和 3D 克重/时长均未启用自动报价。</p>
+          </div>
+          <span class="status review">待确认规则</span>
+        </div>
+        <div class="table-scroll">
+          <table class="rule-table">
+            <thead>
+              <tr>
+                <th>工艺</th>
+                <th>报价项</th>
+                <th>直接报价</th>
+                <th>价格待结构化</th>
+                <th>尺寸规则候选</th>
+                <th>下一步</th>
+              </tr>
+            </thead>
+            <tbody id="ruleReadinessBody"></tbody>
+          </table>
+        </div>
+        <div id="formulaRuleNote" class="formula-rule-note"></div>
+      </section>
+
+      <section id="dimensionsTab" class="admin-section tab-panel" role="tabpanel" data-tab-panel="dimensions" aria-labelledby="dimensionsTabButton" hidden>
+        <div class="section-head">
+          <div>
+            <h2>尺寸规则</h2>
+            <p>将尺寸原文拆成可审核的类型与毫米边界，只有已确认规则参与目标尺寸报价。</p>
+          </div>
+          <span class="status direct">仅管理员</span>
+        </div>
+        <div class="admin-pane dimension-pane">
+          <div class="admin-pane-head">
+            <div>
+              <h3>尺寸标准化</h3>
+              <div id="dimensionSummary" class="dimension-summary muted">加载中</div>
+            </div>
+            <button id="confirmHighDimensions" class="estimate-button" type="button">确认高置信建议</button>
+          </div>
+          <div class="dimension-toolbar">
+            <label><span>复核状态</span><select id="dimensionStatusFilter"><option value="">全部</option><option value="待确认" selected>待确认</option><option value="需复核">需复核</option><option value="已确认">已确认</option></select></label>
+            <label><span>尺寸类型</span><select id="dimensionTypeFilter"><option value="">全部类型</option></select></label>
+            <label><span>搜索原文 / SKU / 工艺</span><input id="dimensionSearch" autocomplete="off" placeholder="例如 20*30CM内" /></label>
+            <button id="refreshDimensions" class="secondary-light-button" type="button">筛选</button>
+          </div>
+          <div id="dimensionMessage" class="admin-message" aria-live="polite"></div>
+          <div class="table-scroll">
+            <table class="admin-table dimension-table">
+              <thead><tr><th>报价项</th><th>尺寸原文</th><th>系统拆分</th><th>宽边界 mm</th><th>高边界 mm</th><th>厚 / 深 mm</th><th>置信 / 状态</th><th>操作</th></tr></thead>
+              <tbody id="dimensionTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="adminSection" class="admin-section tab-panel" role="tabpanel" data-tab-panel="admin" aria-labelledby="adminTabButton" hidden>
+        <div class="section-head">
+          <div>
+            <h2>系统管理</h2>
+            <p>账号、数据交换与操作审计。</p>
+          </div>
+          <span class="status direct">仅管理员</span>
+        </div>
+        <div class="admin-grid">
+          <div class="admin-pane">
+            <div class="admin-pane-head">
+              <h3>账号管理</h3>
+              <span id="userCount" class="muted">-</span>
+            </div>
+            <form id="userForm" class="user-form">
+              <label><span>用户名</span><input name="username" autocomplete="off" required /></label>
+              <label><span>显示名称</span><input name="displayName" autocomplete="off" /></label>
+              <label><span>角色</span><select name="role"><option value="member">查询账号</option><option value="admin">管理员</option></select></label>
+              <label><span>初始密码</span><input name="password" type="password" autocomplete="new-password" required /></label>
+              <button class="primary-button" type="submit">创建账号</button>
+            </form>
+            <div id="userMessage" class="admin-message" aria-live="polite"></div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>账号</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead>
+                <tbody id="userTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="admin-pane">
+            <div class="admin-pane-head"><h3>数据导入导出</h3></div>
+            <div class="export-actions">
+              <button id="exportXlsx" class="secondary-light-button" type="button">导出 Excel</button>
+              <button id="exportJson" class="secondary-light-button" type="button">导出 JSON</button>
+            </div>
+            <div class="import-zone">
+              <label><span>选择标准数据文件</span><input id="importFile" type="file" accept=".xlsx,.json" /></label>
+              <button id="previewImport" class="estimate-button" type="button">预检导入</button>
+            </div>
+            <div id="importPreview" class="import-preview" hidden></div>
+          </div>
+          <div class="admin-pane audit-pane">
+            <div class="admin-pane-head"><h3>最近操作</h3></div>
+            <div class="table-scroll">
+              <table class="admin-table audit-table">
+                <thead><tr><th>时间</th><th>账号</th><th>操作</th><th>详情</th><th>IP</th></tr></thead>
+                <tbody id="auditTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside id="detailPanel" class="detail-panel" aria-label="报价依据" aria-hidden="true">
+      <div class="detail-head">
+        <div>
+          <div class="eyebrow">报价依据</div>
+          <h2 id="detailTitle">-</h2>
+        </div>
+        <button id="closeDetail" class="icon-button" type="button" title="关闭">×</button>
+      </div>
+      <div id="detailContent" class="detail-content"></div>
+    </aside>
+    <div id="detailBackdrop" class="backdrop" hidden></div>
+    <aside id="dimensionPanel" class="detail-panel" aria-label="编辑尺寸规则" aria-hidden="true">
+      <div class="detail-head">
+        <div><div class="eyebrow">尺寸规则</div><h2 id="dimensionPanelTitle">编辑边界</h2></div>
+        <button id="closeDimension" class="icon-button" type="button" title="关闭">×</button>
+      </div>
+      <form id="dimensionForm" class="detail-content dimension-form">
+        <input name="quoteId" type="hidden" />
+        <div id="dimensionRaw" class="dimension-raw"></div>
+        <div class="dimension-form-grid">
+          <label><span>尺寸类型</span><select name="sizeType" required></select></label>
+          <label><span>边界条件</span><select name="comparison" required></select></label>
+          <label><span>宽下限 mm</span><input name="width_min_mm" type="number" min="0" step="0.1" /></label>
+          <label><span>宽上限 mm</span><input name="width_max_mm" type="number" min="0" step="0.1" /></label>
+          <label><span>高下限 mm</span><input name="height_min_mm" type="number" min="0" step="0.1" /></label>
+          <label><span>高上限 mm</span><input name="height_max_mm" type="number" min="0" step="0.1" /></label>
+          <label><span>厚 / 深下限 mm</span><input name="depth_min_mm" type="number" min="0" step="0.1" /></label>
+          <label><span>厚 / 深上限 mm</span><input name="depth_max_mm" type="number" min="0" step="0.1" /></label>
+          <label><span>直径下限 mm</span><input name="diameter_min_mm" type="number" min="0" step="0.1" /></label>
+          <label><span>直径上限 mm</span><input name="diameter_max_mm" type="number" min="0" step="0.1" /></label>
+          <label><span>纸张规格</span><input name="paperFormat" placeholder="例如 A3" /></label>
+          <label><span>复核状态</span><select name="reviewStatus"><option value="待确认">待确认</option><option value="已确认">已确认</option><option value="需复核">需复核</option></select></label>
+        </div>
+        <label><span>拆分说明</span><input name="parseNote" /></label>
+        <div id="dimensionFormMessage" class="admin-message" aria-live="polite"></div>
+        <div class="dimension-form-actions"><button class="primary-button" type="submit">保存尺寸规则</button></div>
+      </form>
+    </aside>
+    <div id="dimensionBackdrop" class="backdrop" hidden></div>
+    <script src="/app.js?v=20260819-tabs"></script>
+  </body>
+</html>
