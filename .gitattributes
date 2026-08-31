@@ -1,0 +1,2 @@
+# Collapse vendored JavaScript in code reviews without changing its contents.
+app/static/vendor/three/*.js linguist-vendored

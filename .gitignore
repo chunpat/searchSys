@@ -16,6 +16,7 @@ node_modules
 .DS_Store
 *.swp
 *~
+.workbuddy/
 
 # Source spreadsheets and generated artifacts
 *.xlsx
@@ -23,11 +24,17 @@ node_modules
 .~*
 outputs/
 
+# Local screen recordings and video working files (keep files on disk)
+/录屏*.mov
+/data/**/*.mov
+/data/**/*.mp4
+
 # Runtime data. Keep data/master_data_source.json under version control.
 data/*.db
 data/*.db-*
 data/backups/
 data/import_staging/
+data/case_assets/
 
 # Local logs
 *.log
