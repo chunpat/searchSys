@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>定制报价查询</title>
     <link rel="stylesheet" href="/style.css?v=20260819-tabs" />
+    <link rel="stylesheet" href="/cases.css?v=20260831-dimensions" />
   </head>
   <body>
     <header class="topbar">
@@ -30,6 +31,7 @@
 
       <nav class="workspace-tabs" role="tablist" aria-label="功能模块">
         <button id="queryTabButton" class="workspace-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="queryTab" data-tab-target="query">报价查询</button>
+        <button id="casesTabButton" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="casesTab" data-tab-target="cases">产品案例 / 图案</button>
         <button id="rulesTabButton" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="rulesTab" data-tab-target="rules">规则推进</button>
         <button id="dimensionsTabButton" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="dimensionsTab" data-tab-target="dimensions" data-admin-tab hidden>尺寸规则</button>
         <button id="adminTabButton" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="adminSection" data-tab-target="admin" data-admin-tab hidden>系统管理</button>
@@ -139,6 +141,21 @@
         <div id="capabilityList" class="capability-list"></div>
       </section>
       </div>
+
+      <section id="casesTab" class="tab-panel case-library" role="tabpanel" data-tab-panel="cases" aria-labelledby="casesTabButton" hidden>
+        <div class="section-head"><div><h2>产品案例与图案</h2><p>按 SKU、供应商和工艺查找案例，管理图片、图案和定制区域。</p></div><div class="row-actions" data-case-admin hidden><button id="caseImportOpen" type="button" class="secondary-light-button">导入案例 Excel</button><button id="caseNew" type="button" class="primary-button">新增案例</button></div></div>
+        <form id="caseFilters" class="case-filters">
+          <label><span>关键词</span><input name="q" placeholder="案例名 / SKU / 供应商 / 工艺" /></label>
+          <label><span>模型类型</span><select name="model"><option value="">全部类型</option></select></label>
+          <label data-case-admin hidden><span>状态</span><select name="status"><option value="">全部状态</option><option value="draft">待整理</option><option value="enabled">已启用</option><option value="disabled">已停用</option></select></label>
+          <label data-case-admin hidden><span>数据关联</span><select name="linkStatus"><option value="">全部关联</option><option value="linked">已关联报价</option><option value="unlinked">未关联报价</option><option value="missing">关联需复核</option></select></label>
+          <button class="primary-button" type="submit">查找案例</button><button id="caseClear" class="text-button" type="button">清除筛选</button>
+        </form>
+        <div id="caseImportZone" class="case-import" hidden><label><span>供应商原始工作簿（.xlsx，最大 150 MB）</span><input id="caseImportFile" type="file" accept=".xlsx" /></label><button id="caseImportRun" class="estimate-button" type="button">导入图片与关联</button><p>仅新增待整理案例，不修改报价。按工作表与行定位关联；重复导入会跳过已有案例，保留人工修改。</p></div>
+        <div id="caseMessage" class="admin-message" role="status"></div><p id="caseMeta" class="muted"></p>
+        <div id="caseGrid" class="case-grid"></div>
+        <div class="case-pagination"><button id="casePrevious" class="secondary-light-button" type="button">上一页</button><span id="casePage"></span><button id="caseNext" class="secondary-light-button" type="button">下一页</button></div>
+      </section>
 
       <section id="rulesTab" class="rule-section tab-panel" role="tabpanel" data-tab-panel="rules" aria-labelledby="rulesTabButton" hidden>
         <div class="section-head">
@@ -291,6 +308,43 @@
       </form>
     </aside>
     <div id="dimensionBackdrop" class="backdrop" hidden></div>
-    <script src="/app.js?v=20260819-tabs"></script>
+    <dialog id="caseDialog" class="case-dialog" aria-labelledby="caseDialogTitle">
+      <div class="case-dialog-head"><div><small id="caseIdentity" class="muted"></small><h2 id="caseDialogTitle">案例详情</h2></div><button id="caseClose" class="secondary-light-button" type="button">关闭</button></div>
+      <div id="caseDialogMessage" class="admin-message" role="status"></div>
+      <div class="case-detail-layout">
+        <div class="case-visual-column">
+          <div id="caseOriginal" class="case-original"></div><div id="caseImages" class="case-image-strip"></div>
+          <div class="case-image-actions" data-case-admin hidden><label><span>图片用途</span><select id="caseImageRole"><option value="reference">案例参考图</option><option value="artwork">独立图案素材</option></select></label><label><span>上传图片（PNG / JPG / WebP，最大 12 MB）</span><input id="caseUpload" type="file" accept="image/png,image/jpeg,image/webp" /></label><button id="caseCropOpen" class="secondary-light-button" type="button">从选中图片裁出图案</button><button id="caseImageRemove" class="text-button" type="button">移除选中图片</button></div>
+          <div class="case-preview-head"><h3>3D 定制预览</h3><button id="caseViewReset" type="button" class="secondary-light-button">适应视图 / 复位</button></div>
+          <section id="caseModelSize" class="case-model-size" aria-label="模型尺寸设置" hidden>
+            <div class="case-placement-head"><strong>模型尺寸 <small>mm</small></strong><button id="caseDimensionReset" type="button" class="text-button" data-case-admin hidden>恢复示例尺寸</button></div>
+            <p id="caseDimensionState" class="muted"></p>
+            <div id="caseDimensions" class="case-dimension-fields"></div>
+            <p id="caseDimensionHelp" class="muted"></p>
+          </section>
+          <p id="caseDimensionSummary" class="case-dimension-summary" aria-live="polite"></p>
+          <div id="caseViewer" class="case-viewer" role="img" aria-label="拖拽旋转的产品案例三维预览"></div>
+          <div id="casePreviewWarnings" class="case-preview-warnings" role="status" hidden></div>
+          <p id="casePreviewNote" class="muted">鼠标拖拽旋转，滚轮缩放。模型按填写尺寸调整，结构仍为示意；裁剪素材不是生产原稿。</p>
+        </div>
+        <div class="case-data-column">
+          <form id="caseEditForm">
+            <div class="case-form-grid"><label><span>案例名称</span><input name="title" maxlength="160" required data-case-edit /></label><label><span>状态</span><select name="status" data-case-edit><option value="draft">待整理</option><option value="enabled">已启用</option><option value="disabled">已停用</option></select></label><label><span>模型类型</span><select name="model" data-case-edit></select></label><label><span>补充关联 SKU（逗号分隔）</span><input name="skuTags" placeholder="关联报价中的 SKU 会自动带入" data-case-edit /></label></div>
+            <div class="case-subhead"><h3>关联报价与规则</h3><span id="caseLinkStatus" class="muted"></span></div>
+            <div data-case-admin hidden class="case-link-picker"><label><span>查找报价</span><input id="caseQuoteSearch" placeholder="输入 SKU / 供应商 / 工艺筛选" /></label><label><span>选择记录</span><select id="caseQuotePick"></select></label><button id="caseLinkAdd" class="secondary-light-button" type="button">添加关联</button></div>
+            <div id="caseLinks"></div>
+            <div class="case-subhead"><h3>定制区域与图案</h3><button id="casePlacementAdd" type="button" class="secondary-light-button" data-case-admin hidden>添加区域</button></div>
+            <p class="muted">这里的宽高只调整图案，不改变产品模型。模型大小请在左侧“模型尺寸”中设置。未绑定图案时显示蓝色区域框；超出模型会显示预览缩放提示。</p>
+            <div id="casePlacements"></div>
+            <label><span>案例备注 / 禁印范围 / 生产注意事项</span><textarea name="note" rows="4" maxlength="6000" data-case-edit></textarea></label>
+            <div id="caseSource" class="case-source muted"></div>
+            <div class="case-save-actions" data-case-admin hidden><span id="caseDirty" class="muted"></span><button class="primary-button" type="submit">保存案例与关联</button></div>
+          </form>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="caseCropDialog" class="case-crop-dialog" aria-labelledby="caseCropTitle"><div class="case-dialog-head"><h2 id="caseCropTitle">裁出图案素材</h2><button id="caseCropClose" class="secondary-light-button" type="button">取消</button></div><p>在图片上拖拽框选图案，或输入像素坐标。原图保留，背景不会自动去除。</p><canvas id="caseCropCanvas" aria-label="拖拽选择图案裁剪范围"></canvas><div class="case-crop-fields"><label><span>左边 X</span><input id="cropLeft" type="number" min="0" step="1" /></label><label><span>上边 Y</span><input id="cropTop" type="number" min="0" step="1" /></label><label><span>宽度 px</span><input id="cropWidth" type="number" min="2" step="1" /></label><label><span>高度 px</span><input id="cropHeight" type="number" min="2" step="1" /></label></div><div id="caseCropMessage" class="admin-message" role="status"></div><button id="caseCropSave" class="primary-button" type="button">保存为图案素材</button></dialog>
+    <script src="/app.js?v=20260831-cases"></script>
+    <script src="/cases.js?v=20260831-dimensions"></script>
   </body>
 </html>

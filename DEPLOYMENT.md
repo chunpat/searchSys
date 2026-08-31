@@ -72,6 +72,7 @@ curl -fsS https://quote-test.example.com/api/health
 ## 备份与更新
 
 - 应用数据保存在 Docker 卷 `quote_data`，更新镜像不会覆盖数据。
+- 产品案例与图案保存在同一卷中的数据库及 `case_assets/`。备份/恢复必须包含二者；管理员导出的报价 Excel/JSON 不包含案例图片。使用说明见 [PRODUCT_CASES.md](PRODUCT_CASES.md)。
 - 建议每日备份 `quote_data`，并定期在管理员页导出 JSON 存档。
 - 更新应用：
 

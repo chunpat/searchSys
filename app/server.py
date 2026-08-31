@@ -8,6 +8,7 @@ import sqlite3
 import sys
 import time
 from collections import defaultdict
+from contextlib import contextmanager
 from http.cookies import SimpleCookie
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +23,7 @@ DATABASE_PATH = DATA_DIR / "quote_query.db"
 SOURCE_JSON_PATH = DATA_DIR / "master_data_source.json"
 STAGING_DIR = DATA_DIR / "import_staging"
 BACKUP_DIR = DATA_DIR / "backups"
+CASE_ASSET_DIR = DATA_DIR / "case_assets"
 SESSION_COOKIE = "quote_session"
 MAX_IMPORT_BYTES = 25 * 1024 * 1024
 LOGIN_ATTEMPTS = {}
@@ -55,14 +57,24 @@ from app.dimensions import (  # noqa: E402
     sync_dimension_normalizations,
     utc_now,
 )
+from app.product_cases import (  # noqa: E402
+    CaseConflict, MAX_IMAGE_BYTES, accessible_asset, case_options, crop_artwork,
+    ensure_case_schema, get_case, list_cases, quote_key, remove_image, save_case, upload_image,
+)
+from app.case_import import import_cases, MAX_WORKBOOK_BYTES  # noqa: E402
 
 
+@contextmanager
 def db_connection():
     connection = sqlite3.connect(DATABASE_PATH, timeout=15)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 15000")
-    return connection
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 
 def number(value):
@@ -264,6 +276,7 @@ def rebuild_database(refresh_source=False):
         )
         connection.execute("INSERT INTO app_meta VALUES (?, ?)", ("summary", json.dumps(source["summary"], ensure_ascii=False)))
         sync_dimension_normalizations(connection)
+        ensure_case_schema(connection)
     return source["summary"]
 
 
@@ -283,6 +296,7 @@ def quote_result(record):
     total_days = production + logistics if production is not None and logistics is not None else None
     return {
         "quoteId": record["quote_id"],
+        "caseQuoteKey": quote_key(record),
         "supplier": record["supplier_name"],
         "sku": record["sku"],
         "process": record["process_raw"],
@@ -1082,9 +1096,41 @@ class QueryHandler(SimpleHTTPRequestHandler):
                 "/api/admin/users", "/api/admin/audit", "/api/admin/export",
                 "/api/admin/dimensions", "/api/admin/dimensions/summary",
             }
-            user = self.require_user(admin=parsed.path in admin_paths)
+            user = self.require_user(admin=parsed.path in admin_paths or parsed.path.startswith("/api/admin/"))
             if not user:
                 return None
+            if parsed.path.startswith("/api/case-assets/"):
+                with db_connection() as connection:
+                    asset = accessible_asset(connection, parsed.path.rsplit("/", 1)[-1], user["role"] == "admin")
+                if not asset:
+                    return self.send_json({"error": "图片不存在或无权限"}, HTTPStatus.NOT_FOUND)
+                filename = asset["thumbnail_name"] if parse_qs(parsed.query).get("thumbnail") == ["1"] else asset["file_name"]
+                target = CASE_ASSET_DIR / filename
+                if not target.is_file():
+                    return self.send_json({"error": "图片文件缺失，请恢复图片备份"}, HTTPStatus.NOT_FOUND)
+                data = target.read_bytes()
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", asset["mime"])
+                self.send_header("Cache-Control", "private, no-store")
+                self.send_header("Content-Length", str(len(data)))
+                self.security_headers()
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            if parsed.path == "/api/cases" or parsed.path.startswith("/api/cases/"):
+                try:
+                    with db_connection() as connection:
+                        if parsed.path == "/api/cases/options":
+                            payload = case_options(connection)
+                        elif parsed.path == "/api/cases":
+                            payload = list_cases(connection, {k:v[0] for k,v in parse_qs(parsed.query).items()}, user["role"] == "admin")
+                        else:
+                            payload = get_case(connection, parsed.path.rsplit("/",1)[-1], user["role"] == "admin")
+                    return self.send_json(payload)
+                except KeyError as error:
+                    return self.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
+                except (ValueError, TypeError) as error:
+                    return self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
             if parsed.path == "/api/summary":
                 return self.send_json(get_summary())
             if parsed.path == "/api/rule-readiness":
@@ -1176,6 +1222,26 @@ class QueryHandler(SimpleHTTPRequestHandler):
         if not user or not self.require_csrf(user):
             return None
         try:
+            if parsed.path.startswith("/api/admin/cases/"):
+                action = parsed.path.rsplit("/", 1)[-1]
+                params = {k:v[0] for k,v in parse_qs(parsed.query).items()}
+                if action == "upload":
+                    content = self.read_body(MAX_IMAGE_BYTES)
+                elif action == "import":
+                    content = self.read_body(MAX_WORKBOOK_BYTES)
+                else:
+                    payload = self.read_json()
+                with db_connection() as connection:
+                    connection.execute("BEGIN IMMEDIATE")
+                    if action == "save": result = save_case(connection, payload, user["username"])
+                    elif action == "upload":
+                        result = upload_image(connection,CASE_ASSET_DIR,params.get("caseId"),int(params.get("version",0)),content,params.get("role"),params.get("label","上传图片"),user["username"])
+                    elif action == "crop": result = crop_artwork(connection,CASE_ASSET_DIR,payload,user["username"])
+                    elif action == "remove-image": result = remove_image(connection,payload,user["username"])
+                    elif action == "import": result = import_cases(connection,CASE_ASSET_DIR,content,params.get("filename","cases.xlsx"),user["username"])
+                    else: return self.send_json({"error":"接口不存在"}, HTTPStatus.NOT_FOUND)
+                    audit(connection,user,"case_"+action,result.get("case_id",json.dumps({k:v for k,v in result.items() if k in {"created","skipped","linked","unlinked"}},ensure_ascii=False)),self.ip_address)
+                return self.send_json(result)
             if parsed.path == "/api/logout":
                 with db_connection() as connection:
                     delete_session(connection, self.raw_session_token())
@@ -1263,6 +1329,8 @@ class QueryHandler(SimpleHTTPRequestHandler):
                 with db_connection() as connection:
                     audit(connection, user, "data_import_commit", backup_path.name, self.ip_address)
                 return self.send_json({"summary": summary, "backup": backup_path.name})
+        except CaseConflict as error:
+            return self.send_json({"error": str(error)}, HTTPStatus.CONFLICT)
         except (ValueError, TypeError, KeyError) as error:
             return self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
         except Exception as error:  # pragma: no cover - returned to the browser
@@ -1326,6 +1394,7 @@ def main():
     with db_connection() as connection:
         bootstrap_admin(connection)
         sync_dimension_normalizations(connection)
+        ensure_case_schema(connection)
         connection.execute("PRAGMA journal_mode = WAL")
 
     server = ThreadingHTTPServer((args.host, args.port), QueryHandler)
