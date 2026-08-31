@@ -1,0 +1,2 @@
+# Collapse vendored JavaScript in reviews and retain upstream indentation.
+app/static/vendor/three/*.js linguist-vendored whitespace=-space-before-tab

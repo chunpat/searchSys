@@ -44,6 +44,7 @@ function activateTab(requestedTab, updateLocation = true) {
     panel.hidden = panel.dataset.tabPanel !== activeTab;
   });
   if (updateLocation) history.replaceState(null, "", `#${activeTab}`);
+  if (activeTab === "cases") window.dispatchEvent(new CustomEvent("cases:activate"));
 }
 
 tabButtons.forEach((button) => {
@@ -120,7 +121,7 @@ function renderResults(results) {
       <td>${escapeHtml(item.material || "-")}</td>
       <td>${escapeHtml(item.customSize || "-")}</td>
       <td class="time">${timeLabel(item)}</td>
-      <td><div class="row-actions"><button class="estimate-row-button" data-estimate-index="${index}" type="button">估价</button><button class="source-button" data-result-index="${index}" type="button">依据</button></div></td>
+      <td><div class="row-actions"><button class="estimate-row-button" data-estimate-index="${index}" type="button">估价</button><button class="source-button" data-result-index="${index}" type="button">依据</button><button class="source-button" data-case-quote="${escapeHtml(item.caseQuoteKey)}" type="button">案例</button></div></td>
     </tr>
   `).join("");
 }
@@ -566,6 +567,7 @@ async function initialize() {
   const payload = await response.json();
   sessionUser = payload.user;
   csrfToken = payload.csrfToken;
+  window.dispatchEvent(new CustomEvent("cases:session", { detail: { role: sessionUser.role } }));
   document.querySelector("#sessionName").textContent = sessionUser.displayName;
   document.querySelector("#sessionRole").textContent = sessionUser.role === "admin" ? "管理员" : "查询账号";
   if (sessionUser.role === "admin") {
