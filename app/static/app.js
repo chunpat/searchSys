@@ -83,9 +83,7 @@ async function postJson(url, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "操作失败");
-  return result;
+  return readApiResponse(response);
 }
 
 function statusClass(status) {

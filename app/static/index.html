@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>定制报价查询</title>
     <link rel="stylesheet" href="/style.css?v=20260819-tabs" />
-    <link rel="stylesheet" href="/cases.css?v=20260831-dimensions" />
+    <link rel="stylesheet" href="/cases.css?v=20260831-import-errors" />
   </head>
   <body>
     <header class="topbar">
@@ -151,7 +151,17 @@
           <label data-case-admin hidden><span>数据关联</span><select name="linkStatus"><option value="">全部关联</option><option value="linked">已关联报价</option><option value="unlinked">未关联报价</option><option value="missing">关联需复核</option></select></label>
           <button class="primary-button" type="submit">查找案例</button><button id="caseClear" class="text-button" type="button">清除筛选</button>
         </form>
-        <div id="caseImportZone" class="case-import" hidden><label><span>供应商原始工作簿（.xlsx，最大 150 MB）</span><input id="caseImportFile" type="file" accept=".xlsx" /></label><button id="caseImportRun" class="estimate-button" type="button">导入图片与关联</button><p>仅新增待整理案例，不修改报价。按工作表与行定位关联；重复导入会跳过已有案例，保留人工修改。</p></div>
+        <div id="caseImportZone" class="case-import" hidden>
+          <label><span>供应商原始工作簿（.xlsx，最大 150 MB）</span><input id="caseImportFile" type="file" accept=".xlsx" /></label>
+          <button id="caseImportRun" class="estimate-button" type="button">导入图片与关联</button>
+          <p>仅新增待整理案例，不修改报价。按工作表与行定位关联；重复导入会跳过已有案例，保留人工修改。</p>
+          <details class="case-import-help"><summary>大文件上传失败？服务器导入步骤</summary>
+            <p>网页上传还受代理大小和超时限制。若使用项目自带的 Docker Compose 部署，可让服务器管理员将原 Excel 上传到服务器的项目目录，保留原文件名，再执行：</p>
+            <pre><code>docker compose cp '副本供应商工艺沉淀 2026.7.16.xlsx' app:/tmp/
+docker compose exec -T app python tools/import_product_cases.py '/tmp/副本供应商工艺沉淀 2026.7.16.xlsx'</code></pre>
+            <p>其他工作簿请在两处换成实际原文件名。命令导入使用同一套校验和去重逻辑，数据保存在现有持久卷。运行前先备份；如网页请求超时，先确认后台导入是否仍在进行，勿并发执行。完成后点击“查找案例”，状态选择“待整理”。</p>
+          </details>
+        </div>
         <div id="caseMessage" class="admin-message" role="status"></div><p id="caseMeta" class="muted"></p>
         <div id="caseGrid" class="case-grid"></div>
         <div class="case-pagination"><button id="casePrevious" class="secondary-light-button" type="button">上一页</button><span id="casePage"></span><button id="caseNext" class="secondary-light-button" type="button">下一页</button></div>
@@ -344,7 +354,8 @@
       </div>
     </dialog>
     <dialog id="caseCropDialog" class="case-crop-dialog" aria-labelledby="caseCropTitle"><div class="case-dialog-head"><h2 id="caseCropTitle">裁出图案素材</h2><button id="caseCropClose" class="secondary-light-button" type="button">取消</button></div><p>在图片上拖拽框选图案，或输入像素坐标。原图保留，背景不会自动去除。</p><canvas id="caseCropCanvas" aria-label="拖拽选择图案裁剪范围"></canvas><div class="case-crop-fields"><label><span>左边 X</span><input id="cropLeft" type="number" min="0" step="1" /></label><label><span>上边 Y</span><input id="cropTop" type="number" min="0" step="1" /></label><label><span>宽度 px</span><input id="cropWidth" type="number" min="2" step="1" /></label><label><span>高度 px</span><input id="cropHeight" type="number" min="2" step="1" /></label></div><div id="caseCropMessage" class="admin-message" role="status"></div><button id="caseCropSave" class="primary-button" type="button">保存为图案素材</button></dialog>
-    <script src="/app.js?v=20260831-cases"></script>
-    <script src="/cases.js?v=20260831-dimensions"></script>
+    <script src="/api-response.js?v=20260831-import-errors"></script>
+    <script src="/app.js?v=20260831-import-errors"></script>
+    <script src="/cases.js?v=20260831-import-errors"></script>
   </body>
 </html>

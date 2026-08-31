@@ -71,6 +71,36 @@ curl -fsS https://quote-test.example.com/api/health
 
 ## 备份与更新
 
+### 案例 Excel 上传返回 HTML 错误页
+
+若页面显示 `Unexpected token '<' ... is not valid JSON`，表示请求返回了网页而不是 API JSON；这条旧提示本身不能确定是文件损坏、上传限制还是代理超时。新页面会显示 HTTP 状态码和处理建议。可在浏览器开发者工具的 Network 中查看 `/api/admin/cases/import` 请求的状态和响应类型，不要分享 Cookie 或认证请求头。
+
+- **413**：某层代理拒绝了请求大小。应用允许 150 MB，不代表外层代理也允许。使用 Nginx 时，应在实际接收该请求的 `server` 或 `location` 中配置适当的 `client_max_body_size`（例如 `160m`），先校验配置再重载；不要关闭所有上传限制。依据：[Nginx 上传大小配置](https://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size)。
+- **504 / 524 / 408**：请求超时，后台可能仍在处理。先刷新案例列表并检查服务状态，不要马上重复提交。Nginx 的 `proxy_read_timeout` 控制两次读取上游响应之间的等待时间，延长它不能解决更外层 CDN 的独立限制。依据：[Nginx 代理响应超时](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_read_timeout)。
+- **502 / 503**：检查 `docker compose ps` 和 `docker compose logs --tail=100 app caddy`，确认进程、内存和代理连接是否正常。
+- **200 + HTML / 404 / 405**：检查是否登录过期、`/api/` 被转发到了静态站点，或者前后端版本不同。
+
+本项目自带 Caddy 配置没有额外设置上传大小限制；若部署前方还有面板 Nginx、Ingress 或 CDN，需要检查实际整条代理链，不能只改应用中的 150 MB 数字。
+
+### 从服务器直接导入大案例工作簿
+
+项目自带的 Docker Compose 部署可使用现有命令导入工具，避开 HTTP 上传和网关等待，但仍执行应用的文件校验、去重和关联规则。不需要关闭认证、公开容器端口或覆盖现有数据库。
+
+1. 先备份现有 `quote_data` 卷；若刚发生网页超时，确认后台处理已经结束，避免并发导入。
+2. 通过服务器文件管理工具或 SCP 将原始工作簿放到服务器项目目录，保留文件名、工作表名和行位置。
+3. 在包含 `docker-compose.yml` 的目录执行（两处均使用实际原文件名）：
+
+```bash
+docker compose cp '副本供应商工艺沉淀 2026.7.16.xlsx' app:/tmp/
+docker compose exec -T app python tools/import_product_cases.py '/tmp/副本供应商工艺沉淀 2026.7.16.xlsx'
+```
+
+结果中的 `created` 为新增案例，`linked` 为关联成功，`unlinked` 为待关联，`skipped` 为已存在而跳过的案例。案例和图片写入正在使用的 `/app/data` 持久卷，回到管理员页面点击“查找案例”查看“待整理”记录。重复导入不会覆盖原有人工编辑。网页导入和命令导入不要同时执行；导入较大工作簿期间，其他数据库写操作可能需要等待。
+
+此方式同样受服务器内存、磁盘空间和应用 150 MB 文件上限约束。工作簿中的示意图片不会自动成为已经裁剪、定位完毕的生产图案。
+
+### 日常备份与更新
+
 - 应用数据保存在 Docker 卷 `quote_data`，更新镜像不会覆盖数据。
 - 产品案例与图案保存在同一卷中的数据库及 `case_assets/`。备份/恢复必须包含二者；管理员导出的报价 Excel/JSON 不包含案例图片。使用说明见 [PRODUCT_CASES.md](PRODUCT_CASES.md)。
 - 建议每日备份 `quote_data`，并定期在管理员页导出 JSON 存档。

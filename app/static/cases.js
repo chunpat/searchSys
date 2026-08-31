@@ -19,7 +19,7 @@
     else {disabledBefore.forEach((disabled,el)=>{if(el.isConnected)el.disabled=disabled;});disabledBefore.clear();}
     $('#caseCropSave').disabled=value;
   }
-  async function request(url,init) { const response=await apiFetch(url,init);const data=await response.json();if(!response.ok)throw new Error(data.error||'请求失败');return data; }
+  async function request(url,init) { return readApiResponse(await apiFetch(url,init)); }
   async function loadOptions(force=false) {
     if(force){options=null;optionsPromise=null;}
     if(!optionsPromise)optionsPromise=request('/api/cases/options').then(data=>{options=data;return data;}).catch(e=>{optionsPromise=null;throw e;});
@@ -158,7 +158,18 @@
   $('#caseImageRemove').addEventListener('click',()=>runAction(async()=>{const im=imageSelected();if(!im)return;if(!window.confirm('移除此案例中的图片关联？原工作簿不会改变。'))return;await beforeImageChange();current=await postJson('/api/admin/cases/remove-image',{caseId:current.case_id,version:current.version,imageId:im.image_id});renderDetail();message('图片关联已移除');loadCases();}));
   $('#caseViewReset').addEventListener('click',()=>viewer?.reset());
   $('#caseImportOpen').addEventListener('click',()=>$('#caseImportZone').hidden=!$('#caseImportZone').hidden);
-  $('#caseImportRun').addEventListener('click',async()=>{const file=$('#caseImportFile').files[0];if(!file)return message('请选择供应商原始工作簿',true,'#caseMessage');if(file.size>150*1024*1024||!file.name.toLowerCase().endsWith('.xlsx'))return message('请选择 150 MB 以内的 .xlsx 文件',true,'#caseMessage');const button=$('#caseImportRun');button.disabled=true;message('正在导入图片与关联数据，请稍候…',false,'#caseMessage');try{const result=await request('/api/admin/cases/import?'+new URLSearchParams({filename:file.name}),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});message(`导入完成：新增 ${result.created} 个案例，关联报价 ${result.linked} 个，待关联 ${result.unlinked} 个，跳过已存在 ${result.skipped} 个。${result.warnings.length?' 有 '+result.warnings.length+' 项需复核：'+result.warnings.slice(0,3).join('；'):''}`,false,'#caseMessage');page=1;await loadCases();}catch(e){message(e.message,true,'#caseMessage');}finally{button.disabled=false;}});
+  $('#caseImportRun').addEventListener('click',async()=>{
+    const input=$('#caseImportFile'),file=input.files[0];
+    if(!file)return message('请选择供应商原始工作簿',true,'#caseMessage');
+    if(file.size>150*1024*1024||!file.name.toLowerCase().endsWith('.xlsx'))return message('请选择 150 MB 以内的 .xlsx 文件',true,'#caseMessage');
+    const button=$('#caseImportRun');button.disabled=true;input.disabled=true;
+    message(`正在上传并处理 ${(file.size/1024/1024).toFixed(1)} MB 工作簿，请勿重复提交。大文件失败时可展开下方“服务器导入步骤”。`,false,'#caseMessage');
+    try{
+      const result=await request('/api/admin/cases/import?'+new URLSearchParams({filename:file.name}),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
+      message(`导入完成：新增 ${result.created} 个案例，关联报价 ${result.linked} 个，待关联 ${result.unlinked} 个，跳过已存在 ${result.skipped} 个。${result.warnings.length?' 有 '+result.warnings.length+' 项需复核：'+result.warnings.slice(0,3).join('；'):''}`,false,'#caseMessage');page=1;await loadCases();
+    }catch(e){message(e instanceof TypeError?'网络连接中断或无法访问服务器。请先刷新案例列表确认导入结果；大文件可改用服务器命令导入。':e.message,true,'#caseMessage');}
+    finally{button.disabled=false;input.disabled=false;}
+  });
   const cropCanvas=$('#caseCropCanvas'), ctx=cropCanvas.getContext('2d');
   const cropInputs=['#cropLeft','#cropTop','#cropWidth','#cropHeight'].map($);
   function cropRect(){return cropInputs.map(el=>Number(el.value));}
